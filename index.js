@@ -34,7 +34,7 @@ if (!global.crypto) {
     global.crypto = cryptoModule.webcrypto || cryptoModule;
 }
 
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, delay } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const axios = require('axios');
 
@@ -228,7 +228,7 @@ async function processQueue() {
     }, 10000);
 }
 
-// ================= WHATSAPP BOT START =================
+// ================= WHATSAPP BOT START WITH PAIRING CODE =================
 async function startBot() {
     cleanStorage();
 
@@ -238,7 +238,6 @@ async function startBot() {
             fs.mkdirSync(sessionFolder, { recursive: true });
         }
 
-        // Check if root creds.json exists and copy to session folder if not present there
         const rootCreds = path.join(__dirname, 'creds.json');
         const sessionCreds = path.join(sessionFolder, 'creds.json');
         if (fs.existsSync(rootCreds) && !fs.existsSync(sessionCreds)) {
@@ -260,6 +259,22 @@ async function startBot() {
         });
 
         sock.ev.on('creds.update', saveCreds);
+
+        // Check if session exists, if not request Pairing Code
+        if (!sock.authState.creds.registered) {
+            console.log("\n⚠️ No session found (creds.json missing). Generating Pairing Code...");
+            await delay(3000);
+            
+            try {
+                const code = await sock.requestPairingCode(PHONE_NUMBER);
+                console.log(`\n========================================`);
+                console.log(`🔑 YOUR WHATSAPP PAIRING CODE IS:  ${code?.match(/.{1,4}/g)?.join("-") || code}`);
+                console.log(`========================================\n`);
+                console.log(`💡 Instructions: Open WhatsApp -> Linked Devices -> Link with phone number instead -> Enter this code.`);
+            } catch (err) {
+                console.error("❌ Failed to generate pairing code:", err);
+            }
+        }
 
         sock.ev.on('connection.update', async u => {
             const { connection: c, lastDisconnect: l } = u;
@@ -301,7 +316,7 @@ async function startBot() {
                 console.error("❌ Message Processing Error:", e);
             }
         });
-    } catch (e) {  // මෙන්න මෙතන හරියටම catch (e) විදිහට හදා ඇත
+    } catch (e) {
         console.error("❌ Bot Fatal Error:", e);
     }
 }
